@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 import io
 import math
 
-FreeBSD_RESULT = False
-Linux_RESULT = True
+FreeBSD_RESULT = True
+Linux_RESULT = False
 SEARCH_RESULT = True
 CRASH_TEST_RESULT = False
 
 cwd = os.getcwd()
-base_path = "/home/maryam/SEARCH/dash_test/dash_results/1_linux_desktop_cablemodem_home/"
+base_path = "/home/maryam/SEARCH/Dash-test/dash_results_freebsd/crash_test/crash_test_with_rack_newreno_search_just_logs/"
 pcap_csv_path = "" # pcap_csv_path = os.path.join(base_path, "data/pcap_server")
 fig_path = os.path.join(base_path, "figures")
 if not os.path.exists(fig_path):
@@ -27,7 +27,7 @@ client_data_path = os.path.join(base_path, "client")
 
 FOLDER_PATH = "data/log_search"
 
-SERVER_IP = "130.215.28.249"
+SERVER_IP = "130.215.30.211"
 INTERVAL = 0.5  # 1s
 
 ###################################### Functions ##################################
@@ -133,8 +133,6 @@ def parse_client_log_file(filepath):
     return client_info
 
 ####################### Plotting helper functions #########################
-import matplotlib.pyplot as plt
-
 def plot_vlines(times, color, label, linewidth):
     if times is None or len(times) == 0:
         return
@@ -146,6 +144,26 @@ def plot_vlines(times, color, label, linewidth):
 
     for i, t in enumerate(times):
         plt.axvline(x=t, color=color, linestyle='--', linewidth=linewidth, label=label if i == 0 else None)
+
+################## clean list of None, nan, and empty values ##################
+def clean_list(lst):
+    """Remove NaN, None, and non-numeric values. Return NumPy float array."""
+    import math
+    import numpy as np
+    
+    if lst is None:
+        return np.array([], dtype=float)
+    
+    # Flatten NumPy arrays and handle scalars
+    if np.isscalar(lst):
+        lst = [lst]
+    elif isinstance(lst, np.ndarray):
+        lst = lst.ravel().tolist()
+    
+    return np.array(
+        [x for x in lst if isinstance(x, (int, float)) and not math.isnan(x)],
+        dtype=float
+    )
 
 
 ###################################### FREEBSD ####################################
@@ -168,7 +186,7 @@ if FreeBSD_RESULT:
                         flow_pointer = match.group(1)
                         flow_pointers.append(flow_pointer)
 
-            for num in range(num_files):
+            for num in range(1, 9):
                 for flow_pointer in flow_pointers:
 
                     time_s_log_list = []
@@ -192,6 +210,7 @@ if FreeBSD_RESULT:
                     sent_MB_list = []
                     curr_delv_window_MB_list = []
                     prev_delv_window_MB_list = []
+                    passed_bin_list = []
 
                     # Check if the file exists
                     data_path = os.path.join(folder_path, f"log_data{num+1}_{flow_pointer}.csv")
@@ -247,6 +266,8 @@ if FreeBSD_RESULT:
 
                     prev_delv_window_MB_list = df['prev_delv_MB'] if not df['prev_delv_MB'].isnull().all() else None
 
+                    passed_bin_list = df['passed_bins'] if not df['passed_bins'].isnull().all() else None
+
                     # Check if there is negative value in norm_list, and replace that with 0
                     if norm_values_list is not None:
                         norm_values_list = [max(0, value) for value in norm_values_list]
@@ -295,6 +316,8 @@ if FreeBSD_RESULT:
                             print(f"File {csv_file_path} does not exist")
                     else:
                         print(f"Directory {pcap_csv_path} does not exist")
+                    
+
                     # If throughputs is empty, set it to None
                     if not throughputs:
                         throughputs = None
@@ -316,8 +339,24 @@ if FreeBSD_RESULT:
                             
 
                     delivery_rate_per_ack, start_index, time_cal_delv_rates = calculate_delivery_rate_per_ack(total_bytes_acked_MB_log_list, time_s_log_list, srtt_s_log_list)            
-                                
+            
                     ################ plotting ##########################
+                    # remove none values from search_exit_s_log_list, after_idle_time_s_log_list, ..
+
+                    search_exit_s_log_list = np.array(search_exit_s_log_list)
+                    after_idle_time_s_log_list = np.array(after_idle_time_s_log_list)
+                    loss_time_s_log_list = np.array(loss_time_s_log_list)
+                    rto_time_s_log_list = np.array(rto_time_s_log_list)
+                    ecn_time_s_log_list = np.array(ecn_time_s_log_list)
+
+
+                    search_exit_s_log_list = clean_list(search_exit_s_log_list)
+                    after_idle_time_s_log_list = clean_list(after_idle_time_s_log_list)
+                    loss_time_s_log_list = clean_list(loss_time_s_log_list)
+                    rto_time_s_log_list = clean_list(rto_time_s_log_list)
+                    ecn_time_s_log_list = clean_list(ecn_time_s_log_list)
+
+                
                     # remove none values from search_exit
                     if search_exit_s_log_list is not None:
                         search_exit_s_log_list = [x for x in search_exit_s_log_list if x is not None]
@@ -356,10 +395,9 @@ if FreeBSD_RESULT:
                     plt.legend(loc='lower right')
                     plt.xticks(fontsize=16)
                     plt.yticks(fontsize=16)
-                    plt.ylim(-0.05, max_cwnd * 1.5)
-                    plt.xlim(-0.05, search_exit_s_log_list[0] + 1)
+                    plt.ylim(-0.01, max_cwnd * 1.5)
+                    plt.xlim(-0.01, search_exit_s_log_list[0] + 0.1)
                     plt.tight_layout()
-
                     # Save figure
                     output_filename = os.path.join(fig_path, f"cwnd_ssthresh_{num+1}_{flow_pointer}_zoom1.png")
                     plt.savefig(output_filename)
@@ -381,7 +419,7 @@ if FreeBSD_RESULT:
                     plt.legend(loc='lower right')
                     plt.xticks(fontsize=16)
                     plt.yticks(fontsize=16)
-                    plt.xlim(-0.05, search_exit_s_log_list[0] + 1)
+                    plt.xlim(0, search_exit_s_log_list[0] + 0.2)
 
                     # plt.grid()
                     plt.savefig(os.path.join(fig_path, f"delivery_rate_{num+1}_{flow_pointer}_zoom1.png"))
@@ -403,7 +441,7 @@ if FreeBSD_RESULT:
                     plt.legend(loc='lower right')
                     plt.xticks(fontsize=16)
                     plt.yticks(fontsize=16)
-                    plt.xlim(-0.05, search_exit_s_log_list[0] + 1)
+                    plt.xlim(-0.05, search_exit_s_log_list[0] + 0.5)
                     plt.savefig(os.path.join(fig_path, f"srtt_{num+1}_{flow_pointer}_zoom1.png"))
                     plt.close()
 
@@ -421,10 +459,10 @@ if FreeBSD_RESULT:
                     plt.xlabel('Time (s)', fontsize=18)
                     plt.ylabel('Delivery Window (MB)', fontsize=18)
                     plt.title('Delivery Window over time')
-                    plt.legend(loc='lower right')
+                    plt.legend()
                     plt.xticks(fontsize=16)
                     plt.yticks(fontsize=16)
-                    plt.xlim(-0.05, search_exit_s_log_list[0] + 1)
+                    plt.xlim(0, search_exit_s_log_list[0] + 0.01)
                     plt.savefig(os.path.join(fig_path, f"delivery_window_{num+1}_{flow_pointer}_zoom1.png"))
                     plt.close()
                     
@@ -444,10 +482,10 @@ if FreeBSD_RESULT:
                         plt.xlabel('Time (s)', fontsize=18)
                         plt.ylabel('norm', fontsize=18)
                         plt.title('norm over time')
-                        plt.legend(loc='lower right')
+                        plt.legend()
                         plt.xticks(fontsize=16)
                         plt.yticks(fontsize=16)
-                        plt.xlim(-0.05, search_exit_s_log_list[0] + 1)
+                        plt.xlim(0, search_exit_s_log_list[0] + 0.01)
                         plt.savefig(os.path.join(fig_path, f"norm_{num+1}_{flow_pointer}_zoom1.png"))
                         plt.close()
             
@@ -513,110 +551,152 @@ if FreeBSD_RESULT:
                         plt.legend(loc='lower right')
                         plt.xticks(fontsize=16)
                         plt.yticks(fontsize=16)
-                        plt.xlim(-1, 50)
+                        plt.xlim(-1, 0.1)
                         # plt.grid()
                         plt.savefig(os.path.join(fig_path, f"sent_total_acked_{num+1}_{flow_pointer}.png"))
                         plt.close()
 
-    if client_data_path:
+                        # Plot passed bins over time
+                        search_time_s_log_list = np.asarray(search_time_s_log_list)
+                        search_time_s_log_list = clean_list(search_time_s_log_list)
+                        passed_bin_list = np.asarray(passed_bin_list)
+                        passed_bin_list = clean_list(passed_bin_list)
+                        passed_bin_list = passed_bin_list[:len(search_time_s_log_list)]  # Ensure same length
 
-        client_log_files = [f for f in os.listdir(client_data_path) if f.startswith("Tester") and f.endswith(".txt")]
-        client_log_files.sort()
+                        plt.figure(figsize=(12, 6))
+                        if passed_bin_list is not None:
+                            plt.plot(search_time_s_log_list, passed_bin_list, label='Passed Bins', color='blue', marker='o')
+                        # add search exit time
+                        plot_vlines(search_exit_s_log_list, 'green', 'search exit time', 3)                
+                        plot_vlines(after_idle_time_s_log_list, 'lightgray', 'after idle time', 1)
+                        plot_vlines(loss_time_s_log_list, 'red', 'loss time',1)
+                        plot_vlines(rto_time_s_log_list, 'magenta', 'RTO time', 1)
+                        plot_vlines(ecn_time_s_log_list, 'purple', 'ECN time', 1)
 
-        for client_log_file in client_log_files:
-            client_log_path = os.path.join(client_data_path, client_log_file)
-            if not os.path.exists(client_log_path):
-                print(f"Client log file {client_log_path} does not exist")
-                continue
-            
-            print(f"Processing client log file: {client_log_file}")
-            client_info = parse_client_log_file(client_log_path)
+                        plt.xlabel('Time (s)', fontsize=18)
+                        plt.ylabel('Passed Bins', fontsize=18)
+                        plt.title('Passed Bins over time')
+                        plt.legend()
+                        plt.xticks(fontsize=16)
+                        plt.yticks(fontsize=16)
+                        plt.xlim(0, search_exit_s_log_list[0]+0.01)
+                        # plt.grid()
+                        plt.savefig(os.path.join(fig_path, f"passed_bins_{num+1}_{flow_pointer}.png"))
+                        plt.close()
 
-            # Extract times and bitrates
-            times = client_info['times']
-            bitrates = client_info['bitrates']
-            # convert bitrates to Mbps
-            bitrates = bitrates / 1000  # Convert to kbps
+                        # plot cdf of passed bins
+                        if passed_bin_list is not None and len(passed_bin_list) > 0:
+                            passed_bins_sorted = np.sort(passed_bin_list)
+                            cdf_passed_bins = np.arange(1, len(passed_bins_sorted) + 1) / len(passed_bins_sorted)   
 
-            # Plot bitrate over time
-            plt.figure(figsize=(12, 6))
-            plt.plot(times, bitrates, label='Bitrate', color='blue', marker='o', linewidth=0.5)
-            plt.xlabel('Time (s)', fontsize=18)
-            plt.ylabel('Bitrate (Mbps)', fontsize=18)
-            plt.title(f'Bitrate over time for {client_log_file}')
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            plt.savefig(os.path.join(fig_path, f"bitrate_{client_log_file}.png"))
-            plt.close()
-
-            # plot cdf of bitrates
-            bitrates_sorted = np.sort(bitrates)
-            cdf_bitrate = np.arange(1, len(bitrates_sorted) + 1) / len(bitrates_sorted)
-
-            plt.figure(figsize=(12, 6))
-            plt.plot(bitrates_sorted, cdf_bitrate, marker="o",label='CDF of Bitrate', color='darkred', linewidth=0.5)
-            plt.xlabel('Bitrate (Mbps)', fontsize=18)
-            plt.ylabel('CDF', fontsize=18)
-            plt.title(f'CDF of Bitrate for {client_log_file}')
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            plt.savefig(os.path.join(fig_path, f"cdf_bitrate_{client_log_file}.png"))
-            plt.close()
-
-            # plot resolution over time
-            resolutions = client_info['resolutions']
-            unique_resolutions = np.unique(resolutions)
-            resolution_colors = {
-                '360p': 'blue',
-                '480p': 'green',
-                '720p': 'orange',
-                '1080p': 'red',
-                '2K': 'purple',
-                '4K': 'brown'
-            }
-            plt.figure(figsize=(12, 6))
-            for res in unique_resolutions:
-                res_times = times[resolutions == res]
-                res_bitrates = bitrates[resolutions == res]
-                plt.plot(res_times, res_bitrates, label=res, color=resolution_colors.get(res, 'black'), marker='o', linestyle='')
-            plt.xlabel('Time (s)', fontsize=18)
-            plt.ylabel('Bitrate (Mbps)', fontsize=18)
-            plt.title(f'Bitrate by Resolution over time for {client_log_file}')
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            plt.legend(title='Resolution', fontsize=12)
-            plt.savefig(os.path.join(fig_path, f"bitrate_resolution_{client_log_file}.png"))
-            plt.close()
-
-            # plot cdf of resolutions
-            # Define proper resolution order
-            resolution_order = ['360p', '480p', '720p', '1080p', '2K', '4K']
-            res_label_to_value = {label: i for i, label in enumerate(resolution_order)}
-
-            # Count and sort
-            resolution_counts = pd.Series(resolutions).value_counts()
-            resolution_counts = resolution_counts.loc[[res for res in resolution_order if res in resolution_counts]]
-
-            # Compute CDF
-            resolution_values = resolution_counts.values
-            resolution_labels = resolution_counts.index
-            resolution_cdf = np.cumsum(resolution_values) / np.sum(resolution_values)
-
-            # Plot
-            plt.figure(figsize=(12, 6))
-            plt.plot(resolution_labels, resolution_cdf, marker='o', color='darkgreen', linewidth=0.5, label='CDF of Resolution')
-            plt.xlabel('Resolution', fontsize=18)
-            plt.ylabel('CDF', fontsize=18)
-            plt.title(f'CDF of Resolution for {client_log_file}', fontsize=20)
-            plt.xticks(rotation=45, fontsize=16)
-            plt.yticks(fontsize=16)
-            plt.tight_layout()
-            plt.savefig(os.path.join(fig_path, f"cdf_resolution_{client_log_file}.png"))
-            plt.close()
+                            plt.figure(figsize=(12, 6))
+                            plt.plot(passed_bins_sorted, cdf_passed_bins, marker='o', label='CDF of Passed Bins', color='darkgreen', linewidth=0.5)
+                            plt.xlabel('Passed Bins', fontsize=18)
+                            plt.ylabel('CDF', fontsize=18)
+                            plt.title(f'CDF of Passed Bins for {num+1}_{flow_pointer}', fontsize=20)
+                            plt.xticks(rotation=45, fontsize=16)
+                            plt.yticks(fontsize=16)
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(fig_path, f"cdf_passed_bins_{num+1}_{flow_pointer}.png"))
+                            plt.close()
 
 
+        if client_data_path:
 
-            
+            client_log_files = [f for f in os.listdir(client_data_path) if f.startswith("Tester") and f.endswith(".txt")]
+            client_log_files.sort()
+
+            for client_log_file in client_log_files:
+                client_log_path = os.path.join(client_data_path, client_log_file)
+                if not os.path.exists(client_log_path):
+                    print(f"Client log file {client_log_path} does not exist")
+                    continue
+                
+                print(f"Processing client log file: {client_log_file}")
+                client_info = parse_client_log_file(client_log_path)
+
+                # Extract times and bitrates
+                times = client_info['times']
+                bitrates = client_info['bitrates']
+                # convert bitrates to Mbps
+                bitrates = bitrates / 1000  # Convert to kbps
+
+                # Plot bitrate over time
+                plt.figure(figsize=(12, 6))
+                plt.plot(times, bitrates, label='Bitrate', color='blue', marker='o', linewidth=0.5)
+                plt.xlabel('Time (s)', fontsize=18)
+                plt.ylabel('Bitrate (Mbps)', fontsize=18)
+                plt.title(f'Bitrate over time for {client_log_file}')
+                plt.xticks(fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.savefig(os.path.join(fig_path, f"bitrate_{client_log_file}.png"))
+                plt.close()
+
+                # plot cdf of bitrates
+                bitrates_sorted = np.sort(bitrates)
+                cdf_bitrate = np.arange(1, len(bitrates_sorted) + 1) / len(bitrates_sorted)
+
+                plt.figure(figsize=(12, 6))
+                plt.plot(bitrates_sorted, cdf_bitrate, marker="o",label='CDF of Bitrate', color='darkred', linewidth=0.5)
+                plt.xlabel('Bitrate (Mbps)', fontsize=18)
+                plt.ylabel('CDF', fontsize=18)
+                plt.title(f'CDF of Bitrate for {client_log_file}')
+                plt.xticks(fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.savefig(os.path.join(fig_path, f"cdf_bitrate_{client_log_file}.png"))
+                plt.close()
+
+                # plot resolution over time
+                resolutions = client_info['resolutions']
+                unique_resolutions = np.unique(resolutions)
+                resolution_colors = {
+                    '360p': 'blue',
+                    '480p': 'green',
+                    '720p': 'orange',
+                    '1080p': 'red',
+                    '2K': 'purple',
+                    '4K': 'brown'
+                }
+                plt.figure(figsize=(12, 6))
+                for res in unique_resolutions:
+                    res_times = times[resolutions == res]
+                    res_bitrates = bitrates[resolutions == res]
+                    plt.plot(res_times, res_bitrates, label=res, color=resolution_colors.get(res, 'black'), marker='o', linestyle='')
+                plt.xlabel('Time (s)', fontsize=18)
+                plt.ylabel('Bitrate (Mbps)', fontsize=18)
+                plt.title(f'Bitrate by Resolution over time for {client_log_file}')
+                plt.xticks(fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.legend(title='Resolution', fontsize=12)
+                plt.savefig(os.path.join(fig_path, f"bitrate_resolution_{client_log_file}.png"))
+                plt.close()
+
+                # plot cdf of resolutions
+                # Define proper resolution order
+                resolution_order = ['360p', '480p', '720p', '1080p', '2K', '4K']
+                res_label_to_value = {label: i for i, label in enumerate(resolution_order)}
+
+                # Count and sort
+                resolution_counts = pd.Series(resolutions).value_counts()
+                resolution_counts = resolution_counts.loc[[res for res in resolution_order if res in resolution_counts]]
+
+                # Compute CDF
+                resolution_values = resolution_counts.values
+                resolution_labels = resolution_counts.index
+                resolution_cdf = np.cumsum(resolution_values) / np.sum(resolution_values)
+
+                # Plot
+                plt.figure(figsize=(12, 6))
+                plt.plot(resolution_labels, resolution_cdf, marker='o', color='darkgreen', linewidth=0.5, label='CDF of Resolution')
+                plt.xlabel('Resolution', fontsize=18)
+                plt.ylabel('CDF', fontsize=18)
+                plt.title(f'CDF of Resolution for {client_log_file}', fontsize=20)
+                plt.xticks(rotation=45, fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.tight_layout()
+                plt.savefig(os.path.join(fig_path, f"cdf_resolution_{client_log_file}.png"))
+                plt.close()
+
     ######################################################################################################                
     if CRASH_TEST_RESULT:
 
